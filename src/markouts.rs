@@ -23,7 +23,7 @@ pub fn compute_markouts(
             let target_ts = base_ts + (horizon as u64 * 60);
 
             if let Some(&oracle_price) = oracle.get(&target_ts) {
-                let side = if fill.taker_order_direction == "long" {
+                let side = if fill.maker_order_direction == "long" {
                     1
                 } else {
                     -1
@@ -61,7 +61,7 @@ fn load_oracle(path: &str) -> Result<HashMap<u64, f64>> {
 struct ProcessedFill {
     ts: u64,
     symbol: String,
-    taker_order_direction: String,
+    maker_order_direction: String,
     fill_price: f64,
 }
 
@@ -84,7 +84,7 @@ fn load_fills(path: &str) -> Result<Vec<ProcessedFill>> {
         fills.push(ProcessedFill {
             ts: record.ts,
             symbol: record.symbol,
-            taker_order_direction: record.taker_order_direction,
+            maker_order_direction: record.maker_order_direction,
             fill_price,
         });
     }
