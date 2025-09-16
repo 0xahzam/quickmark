@@ -23,11 +23,16 @@ pub fn compute_markouts(
             let target_ts = base_ts + (horizon as u64 * 60);
 
             if let Some(&oracle_price) = oracle.get(&target_ts) {
+                if fill.maker_order_direction.is_empty() {
+                    continue;
+                }
+
                 let side = if fill.maker_order_direction == "long" {
                     1
                 } else {
                     -1
                 };
+
                 let markout = (side as f64) * (oracle_price - fill.fill_price) / fill.fill_price;
 
                 results.push(MarkoutResult {
