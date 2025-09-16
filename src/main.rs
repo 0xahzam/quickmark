@@ -4,6 +4,7 @@
 //! - `fills`: Fetch user trade data to CSV  
 //! - `compute`: Calculate markouts from CSV inputs
 
+mod batch;
 mod fills;
 mod markouts;
 mod prices;
@@ -69,6 +70,12 @@ enum Commands {
         #[arg(long)]
         output: String,
     },
+    /// Run batch analysis from config file
+    Batch {
+        /// Path to config file
+        #[arg(long)]
+        config: String,
+    },
 }
 
 fn save_to_csv<T>(data: &[T], path: &str) -> Result<()>
@@ -131,6 +138,9 @@ async fn main() -> Result<()> {
             let horizon_vec = markouts::parse_horizons(&horizons)?;
             let results = markouts::compute_markouts(&oracle, &fills, &horizon_vec)?;
             save_to_csv(&results, &output)?;
+        }
+        Commands::Batch { config } => {
+            batch::run_batch(&config).await?;
         }
     }
 

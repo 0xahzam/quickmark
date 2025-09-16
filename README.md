@@ -52,6 +52,39 @@ quickmark compute --oracle data/oracle.csv --fills data/fills.csv --horizons 1,5
 - `--horizons`: Comma-separated horizons in minutes (default: "1,5,15")
 - `--output`: Output CSV file path
 
+### Batch Command
+
+```bash
+quickmark batch --config analysis.toml
+```
+
+- `--config`: Path to TOML config file
+
+Runs complete oracle → fills → markouts pipeline for multiple accounts and symbols.
+
+**Config format:**
+
+```toml
+[global]
+days = 3
+horizons = [1, 5, 15]
+output_dir = "data"
+
+[[accounts]]
+id = "AccountPubkey123..."
+symbols = ["BTC-PERP", "ETH-PERP", "SOL-PERP"]
+
+[[accounts]]
+id = "AnotherAccountPubkey456..."
+symbols = ["XRP-PERP", "WIF-PERP", "DOGE-PERP"]
+```
+
+**Example:**
+
+```bash
+./target/release/quickmark batch --config analysis.toml
+```
+
 ## Complete Example
 
 ```bash
