@@ -4,6 +4,7 @@
 
 use crate::{fills, markouts, prices, save_to_csv};
 use anyhow::Result;
+use futures::future::try_join_all;
 use serde::Deserialize;
 use std::collections::HashSet;
 
@@ -26,6 +27,27 @@ pub struct AccountConfig {
     pub symbols: Vec<String>,
 }
 
+async fn fetch_oracle_for_symbol(symbol: &str, days: u32, output_dir: &str) -> anyhow::Result<()> {
+    println!("Fetching oracle for {}", symbol);
+    let records = prices::fetch_prices(symbol, 1, days, 1000).await?;
+    let path = format!("{}/oracle_{}.csv", output_dir, symbol);
+    save_to_csv(&records, &path)?;
+    Ok(())
+}
+
+async fn fetch_fills_for_symbol(
+    account_id: &str,
+    symbol: &str,
+    days: u32,
+    output_dir: &str,
+) -> anyhow::Result<()> {
+    println!("Fetching fills for {} {}", &account_id[..8], symbol);
+    let records = fills::fetch_fills(account_id, symbol, days).await?;
+    let path = format!("{}/fills_{}_{}.csv", output_dir, &account_id[..8], symbol);
+    save_to_csv(&records, &path)?;
+    Ok(())
+}
+
 pub async fn run_batch(config_path: &str) -> Result<()> {
     let config_content = std::fs::read_to_string(config_path)?;
     let config: Config = toml::from_str(&config_content)?;
@@ -45,53 +67,55 @@ pub async fn run_batch(config_path: &str) -> Result<()> {
         config.global.days
     );
 
+    let output_dir = &config.global.output_dir;
+    let days = config.global.days;
+
     // Fetch oracle data
-    for symbol in &unique_symbols {
-        println!("Fetching oracle for {}", symbol);
-        let records = prices::fetch_prices(symbol, 1, config.global.days, 1000).await?;
-        let path = format!("{}/oracle_{}.csv", config.global.output_dir, symbol);
-        save_to_csv(&records, &path)?;
-    }
+    let oracle_futures: Vec<_> = unique_symbols
+        .iter()
+        .map(|symbol| fetch_oracle_for_symbol(symbol, days, output_dir))
+        .collect();
 
     // Fetch fills data
-    for account in &config.accounts {
-        for symbol in &account.symbols {
-            println!("Fetching fills for {} {}", &account.id[..8], symbol);
-            let records = fills::fetch_fills(&account.id, symbol, config.global.days).await?;
-            let path = format!(
-                "{}/fills_{}_{}.csv",
-                config.global.output_dir,
-                &account.id[..8],
-                symbol
-            );
-            save_to_csv(&records, &path)?;
-        }
-    }
+    let fills_futures: Vec<_> = config
+        .accounts
+        .iter()
+        .flat_map(|account| {
+            let account_id = &account.id;
+            account
+                .symbols
+                .iter()
+                .map(move |symbol| fetch_fills_for_symbol(account_id, symbol, days, output_dir))
+        })
+        .collect();
+
+    let (_, _) =
+        futures::future::try_join(try_join_all(oracle_futures), try_join_all(fills_futures))
+            .await?;
 
     // Compute markouts
-    for account in &config.accounts {
-        for symbol in &account.symbols {
-            println!("Computing markouts for {} {}", &account.id[..8], symbol);
-
-            let oracle_path = format!("{}/oracle_{}.csv", config.global.output_dir, symbol);
-            let fills_path = format!(
-                "{}/fills_{}_{}.csv",
-                config.global.output_dir,
-                &account.id[..8],
-                symbol
-            );
-            let output_path = format!(
-                "{}/markouts_{}_{}.csv",
-                config.global.output_dir,
-                &account.id[..8],
-                symbol
-            );
-
-            let results =
-                markouts::compute_markouts(&oracle_path, &fills_path, &config.global.horizons)?;
-
-            save_to_csv(&results, &output_path)?;
-        }
+    for (account, symbol) in config
+        .accounts
+        .iter()
+        .flat_map(|account| account.symbols.iter().map(move |symbol| (account, symbol)))
+    {
+        println!("Computing markouts for {} {}", &account.id[..8], symbol);
+        let oracle_path = format!("{}/oracle_{}.csv", config.global.output_dir, symbol);
+        let fills_path = format!(
+            "{}/fills_{}_{}.csv",
+            config.global.output_dir,
+            &account.id[..8],
+            symbol
+        );
+        let output_path = format!(
+            "{}/markouts_{}_{}.csv",
+            config.global.output_dir,
+            &account.id[..8],
+            symbol
+        );
+        let results =
+            markouts::compute_markouts(&oracle_path, &fills_path, &config.global.horizons)?;
+        save_to_csv(&results, &output_path)?;
     }
 
     println!("Batch complete: {}", config.global.output_dir);
