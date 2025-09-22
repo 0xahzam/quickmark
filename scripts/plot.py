@@ -7,25 +7,25 @@ from pathlib import Path
 def plot_markouts(csv_path):
     df = pd.read_csv(csv_path)
 
-    # Get unique horizons and sort them
+    df["datetime"] = pd.to_datetime(df["ts"], unit="s")
+
     horizons = sorted(df["horizon"].unique(), key=lambda x: int(x[:-1]))
 
     plt.figure(figsize=(12, 8))
 
-    # Plot cumulative markout for each horizon
     for horizon in horizons:
         subset = df[df["horizon"] == horizon].copy()
-        subset = subset.sort_values("ts")
+        subset = subset.sort_values("datetime")
         subset["cumulative_markout"] = subset["markout"].cumsum()
 
         plt.plot(
-            range(len(subset)),
+            subset["datetime"],
             subset["cumulative_markout"],
             label=f"{horizon} horizon",
             linewidth=2,
         )
 
-    plt.xlabel("Trade Number")
+    plt.xlabel("Time")
     plt.ylabel("Cumulative Markout")
     plt.title("Cumulative Markout Performance by Horizon")
     plt.legend()
@@ -33,7 +33,6 @@ def plot_markouts(csv_path):
     plt.tight_layout()
     plt.show()
 
-    # Print summary stats
     print("\nMarkout Summary:")
     print("-" * 40)
     for horizon in horizons:
