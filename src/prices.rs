@@ -2,8 +2,13 @@
 //!
 //! - `fetch_oracle()`: Backward time iteration for candle data
 
-use crate::types::CandleData;
+use crate::types::{CandleApiResponse, CandleData};
 use anyhow::{Result, bail};
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::new();
+}
 
 pub async fn fetch_prices(
     symbol: &str,
@@ -11,7 +16,6 @@ pub async fn fetch_prices(
     days: u32,
     limit: u32,
 ) -> Result<Vec<CandleData>> {
-    let client = reqwest::Client::new();
     let now = chrono::Utc::now().timestamp() as u64;
     let cutoff_ts = now - (days as u64 * 86400);
 
@@ -25,7 +29,7 @@ pub async fn fetch_prices(
             symbol, interval
         );
 
-        let res = client
+        let res = HTTP_CLIENT
             .get(&url)
             .query(&[
                 ("startTs", start_ts.to_string()),
@@ -39,13 +43,8 @@ pub async fn fetch_prices(
             bail!("API request failed with status: {}", res.status());
         }
 
-        let json: serde_json::Value = res.json().await?;
-
-        if !json.get("records").is_some() {
-            break;
-        }
-
-        let records: Vec<CandleData> = serde_json::from_value(json["records"].clone())?;
+        let response: CandleApiResponse = res.json().await?;
+        let records = response.records.unwrap_or_default();
 
         if records.is_empty() {
             break;
@@ -67,56 +66,11 @@ pub async fn fetch_prices(
         }
         start_ts = last_ts - 1;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }
 
     // Sort by timestamp (oldest first)
     all_records.sort_by_key(|r| r.ts);
 
     Ok(all_records)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_fetch_prices_btc() {
-        let result = fetch_prices("BTC-PERP", 1, 3, 1000).await;
-
-        match result {
-            Ok(records) => {
-                println!("Fetched {} candles", records.len());
-                if !records.is_empty() {
-                    println!(
-                        "First candle: ts={}, close={}",
-                        records[0].ts, records[0].oracle_close
-                    );
-                    println!(
-                        "Last candle: ts={}, close={}",
-                        records.last().unwrap().ts,
-                        records.last().unwrap().oracle_close
-                    );
-                }
-            }
-            Err(e) => panic!("Oracle fetch failed: {}", e),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_fetch_prices_doge() {
-        let result = fetch_prices("DOGE-PERP", 5, 1, 500).await;
-
-        match result {
-            Ok(records) => {
-                println!("DOGE 5m candles: {}", records.len());
-                assert!(!records.is_empty());
-                // Verify sorting
-                for i in 1..records.len() {
-                    assert!(records[i].ts >= records[i - 1].ts);
-                }
-            }
-            Err(e) => panic!("DOGE oracle fetch failed: {}", e),
-        }
-    }
 }

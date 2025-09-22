@@ -12,6 +12,7 @@ mod types;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use log::info;
 use std::fs::File;
 
 #[derive(Parser)]
@@ -90,12 +91,17 @@ where
     }
 
     writer.flush()?;
-    println!("Saved {} records to {}", data.len(), path);
+    info!("Saved {} records to {}", data.len(), path);
     Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .format_timestamp_millis()
+        .init();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -105,10 +111,11 @@ async fn main() -> Result<()> {
             days,
             output,
         } => {
-            println!(
+            info!(
                 "Fetching oracle data for {} {}m interval, {} days...",
                 symbol, interval, days
             );
+
             let records = prices::fetch_prices(&symbol, interval, days, 1000).await?;
             save_to_csv(&records, &output)?;
         }
@@ -118,7 +125,7 @@ async fn main() -> Result<()> {
             days,
             output,
         } => {
-            println!(
+            info!(
                 "Fetching fills for account {} symbol {} for {} days...",
                 account, symbol, days
             );
@@ -131,7 +138,7 @@ async fn main() -> Result<()> {
             horizons,
             output,
         } => {
-            println!(
+            info!(
                 "Computing markouts from {} and {} with horizons {}...",
                 oracle, fills, horizons
             );
