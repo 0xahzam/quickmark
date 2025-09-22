@@ -97,6 +97,12 @@ mkdir -p data
 # Analyze
 ./target/release/quickmark compute --oracle data/oracle_doge.csv --fills data/fills_doge.csv --output data/markouts_doge.csv
 
-# Visualize
-python scripts/plot.py data/markouts_doge.csv
+# Visualize single markout file
+uv run scripts/plot.py data/markouts_XyzRandomAccount11_HYPE-PERP.csv
+
+# Visualize all markout files in grid
+uv run scripts/plot.py
+
+# Visualize all markout files in in results/ directory
+uv run scripts/plot.py results
 ```
